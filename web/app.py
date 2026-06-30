@@ -1,15 +1,22 @@
 import json
+import os
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import defaultdict
 
 from flask import Flask, render_template, jsonify
+from flask_basicauth import BasicAuth
 
 from toggl_goals.config import Config
 from toggl_goals.store import Store
 from toggl_goals.engine import StreakEngine
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
+app.config['BASIC_AUTH_USERNAME'] = os.environ.get('GTG_USER', 'aban')
+app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('GTG_PASS', 'groundtruth')
+app.config['BASIC_AUTH_FORCE'] = True
+basic_auth = BasicAuth(app)
+
 store = Store()
 config = Config()
 engine = StreakEngine(config)
