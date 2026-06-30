@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI runner: fetch toggl data, compute streaks, persist, print report.
+CLI runner: sync toggl data, compute streaks, persist, print report.
 Usage: python -m toggl_goals.cli
 """
 import json
@@ -9,49 +9,53 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Add parent to path for local dev
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from toggl_goals.config import Config
-from toggl_goals.toggl import TogglFetcher, Categorizer
-from toggl_goals.engine import StreakEngine, Report
-from toggl_goals.store import Store
+from toggl_goals.sync import Syncer
+from toggl_goals.engine import Report
 
 
 def run():
-    print("⏳ Fetching Toggl data...")
-    fetcher = TogglFetcher()
-    raw = fetcher.fetch_all()
-    if not raw:
-        print("No entries found.")
+    print("⏳ Syncing Toggl data...")
+    syncer = Syncer()
+    result = syncer.sync()
+
+    if result["status"] != "ok":
+        print(f"Sync failed: {result}")
         sys.exit(1)
 
-    config = Config()
-    cat = Categorizer(config)
-    entries = cat.parse(raw)
+    print(f"✅ Synced {result['fetched']} entries ({result['new']} new). Period: {result['period']}")
 
-    # Determine date range
+    # Load from store for report
+    days = syncer.store.get_all_days()
+    if not days:
+        print("No data to report.")
+        sys.exit(0)
+
+    # Recompute report from stored data
+    from toggl_goals.toggl import Categorizer
+    from toggl_goals.engine import StreakEngine
+    cat = Categorizer(syncer.config)
+    conn = syncer.store._conn()
+    rows = conn.execute("SELECT date, description, duration, categories, is_maintenance FROM entries ORDER BY date").fetchall()
+    conn.close()
+
+    entries = []
+    for r in rows:
+        entries.append({
+            "date": r[0],
+            "description": r[1],
+            "duration": r[2],
+            "categories": json.loads(r[3]) if r[3] else [],
+            "is_maintenance": bool(r[4]),
+        })
+
     dates = sorted(set(e["date"] for e in entries))
-    start, end = dates[0], dates[-1]
+    daily, maintenance = syncer.engine.build_daily(entries)
+    full_days = syncer.engine.make_day_range(dates[0], dates[-1])
+    streaks = syncer.engine.compute_streaks(full_days, daily)
 
-    engine = StreakEngine(config)
-    daily, maintenance = engine.build_daily(entries)
-    full_days = engine.make_day_range(start, end)
-    streaks = engine.compute_streaks(full_days, daily)
-
-    # Persist
-    store = Store()
-    for day in full_days:
-        scores = daily.get(day, {})
-        total = sum(scores.values())
-        maint = maintenance.get(day, 0)
-        day_streaks = {name: streaks[name]["current"] for name in streaks}
-        store.save_day(day, scores, maint, total, day_streaks)
-    store.save_entries(entries)
-    store.set_meta("last_sync", datetime.now(timezone.utc).isoformat())
-
-    # Report
-    report = Report(streaks, daily, maintenance, full_days, config)
+    report = Report(streaks, daily, maintenance, full_days, syncer.config)
 
     print()
     print("═" * 60)

@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from collections import defaultdict
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from flask_basicauth import BasicAuth
 
 from toggl_goals.config import Config
@@ -165,6 +165,28 @@ def gaps():
     }
 
     return jsonify(result)
+
+@app.route("/api/sync", methods=["POST"])
+def api_sync():
+    from toggl_goals.sync import Syncer
+    syncer = Syncer()
+    result = syncer.sync()
+    return jsonify(result)
+
+@app.route("/api/current")
+def current_timer():
+    from toggl_goals.sync import Syncer
+    syncer = Syncer()
+    timer = syncer.get_current_timer()
+    if not timer:
+        return jsonify({"running": False})
+    return jsonify({
+        "running": True,
+        "description": timer["description"],
+        "duration_mins": timer["duration"] / 60 if timer["duration"] > 0 else 0,
+        "categories": timer.get("categories", []),
+        "is_maintenance": timer.get("is_maintenance", False),
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

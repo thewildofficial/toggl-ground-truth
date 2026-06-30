@@ -17,6 +17,13 @@ goals:
     icon: 🗣️
     color: "#22c55e"
 
+  reading:
+    target_mins: 30
+    tier: non-negotiable
+    keywords: [read, reading, readest, book, kindle, epub]
+    icon: 📖
+    color: "#22c55e"
+
   research:
     target_mins: 90
     tier: high-ideal
