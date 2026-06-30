@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ground Truth Goals</title>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --card: #141414;
+  --border: #2a2a2a;
+  --text: #e5e5e5;
+  --text-dim: #888;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+  --accent: #3b82f6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  padding: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
+.subtitle { color: var(--text-dim); margin-bottom: 2rem; font-size: 0.9rem; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+.card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+
+.today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.8rem; }
+.goal-tile {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.goal-tile.met { border-color: var(--green); }
+.goal-tile.missed { border-color: var(--red); opacity: 0.7; }
+.goal-tile .icon { font-size: 1.8rem; margin-bottom: 0.3rem; }
+.goal-tile .name { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+.goal-tile .value { font-size: 1.4rem; font-weight: 600; margin: 0.2rem 0; }
+.goal-tile .target { font-size: 0.75rem; color: var(--text-dim); }
+.goal-tile .streak { position: absolute; top: 6px; right: 8px; font-size: 0.75rem; }
+
+.progress-bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  margin-top: 0.6rem;
+  overflow: hidden;
+}
+.progress-bar .fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.gap-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.gap-table th { text-align: left; padding: 0.6rem 0.4rem; color: var(--text-dim); border-bottom: 1px solid var(--border); font-weight: 500; }
+.gap-table td { padding: 0.6rem 0.4rem; border-bottom: 1px solid var(--border); }
+.gap-table .streak-good { color: var(--green); }
+.gap-table .streak-bad { color: var(--red); }
+.gap-table .catch-never { color: var(--red); font-weight: 600; }
+
+.heatmap { display: flex; gap: 2px; flex-wrap: wrap; }
+.day-cell {
+  width: 22px; height: 22px;
+  border-radius: 3px;
+  position: relative;
+}
+.day-cell:hover::after {
+  content: attr(data-date) "\A" attr(data-val);
+  position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--border);
+  padding: 4px 8px; border-radius: 6px;
+  font-size: 0.7rem; white-space: pre; z-index: 10;
+  pointer-events: none;
+}
+
+.brutal { background: rgba(239, 68, 68, 0.1); border-color: var(--red); }
+.brutal p { color: var(--red); font-weight: 500; }
+
+.status-line { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>🔥 Ground Truth Goals</h1>
+<p class="subtitle">No checkboxes. No self-deception. Time logged = progress.</p>
+
+<p class="status-line" id="status">Loading...</p>
+
+<div class="card">
+  <h2>Today's Scoreboard</h2>
+  <div class="today-grid" id="today"></div>
+</div>
+
+<div class="card">
+  <h2>Activity Heatmap (last 30 days)</h2>
+  <div id="heatmap" style="margin-bottom:1rem"></div>
+  <div id="heatmap-legend" style="font-size:0.75rem;color:var(--text-dim)"></div>
+</div>
+
+<div class="card">
+  <h2>Streaks + Gap Forecast</h2>
+  <table class="gap-table">
+    <thead><tr><th>Goal</th><th>Streak</th><th>7d Avg</th><th>Total Gap</th><th>Catch-up</th></tr></thead>
+    <tbody id="gaps"></tbody>
+  </table>
+</div>
+
+<div class="card" id="reality-card" style="display:none">
+  <h2>Reality Check</h2>
+  <div id="reality"></div>
+</div>
+
+<script>
+async function load() {
+  const [today, history, gaps, status] = await Promise.all([
+    fetch('/api/today').then(r => r.json()),
+    fetch('/api/history').then(r => r.json()),
+    fetch('/api/gaps').then(r => r.json()),
+    fetch('/api/status').then(r => r.json()),
+  ]);
+
+  document.getElementById('status').textContent =
+    `Last sync: ${status.last_sync ? new Date(status.last_sync).toLocaleString() : 'never'}  |  ${status.days_tracked} days tracked`;
+
+  // Today board
+  const todayEl = document.getElementById('today');
+  if (today.goals) {
+    todayEl.innerHTML = today.goals.map(g => `
+      <div class="goal-tile ${g.met ? 'met' : 'missed'}">
+        <div class="streak">🔥${g.streak}d</div>
+        <div class="icon">${g.icon}</div>
+        <div class="name">${g.name}</div>
+        <div class="value" style="color:${g.color}">${g.actual}m</div>
+        <div class="target">/ ${g.target}m</div>
+        <div class="progress-bar"><div class="fill" style="width:${g.pct*100}%; background:${g.color}"></div></div>
+      </div>
+    `).join('');
+  }
+
+  // Heatmap
+  const hmEl = document.getElementById('heatmap');
+  const goalNames = today.goals ? today.goals.map(g => g.name) : [];
+  const colors = today.goals ? today.goals.reduce((a,g) => ({...a, [g.name]: g.color}), {}) : {};
+  const targets = today.goals ? today.goals.reduce((a,g) => ({...a, [g.name]: g.target}), {}) : {};
+
+  if (history.length && goalNames.length) {
+    goalNames.forEach(name => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
+      const label = document.createElement('span');
+      label.textContent = name;
+      label.style.cssText = 'width:80px;font-size:0.75rem;text-transform:uppercase;color:var(--text-dim);';
+      row.appendChild(label);
+      history.slice(-30).forEach(day => {
+        const val = day.scores[name] || 0;
+        const tgt = targets[name] || 1;
+        const intensity = Math.min(val / tgt, 1);
+        const cell = document.createElement('div');
+        cell.className = 'day-cell';
+        cell.style.background = intensity > 0 ? colors[name] + Math.round(intensity * 200 + 55).toString(16).padStart(2,'0') : 'var(--border)';
+        cell.dataset.date = day.date;
+        cell.dataset.val = `${Math.round(val)}m / ${tgt}m`;
+        row.appendChild(cell);
+      });
+      hmEl.appendChild(row);
+    });
+  }
+
+  // Gaps table
+  const gapEl = document.getElementById('gaps');
+  if (gaps && Object.keys(gaps).length) {
+    const rows = Object.entries(gaps)
+      .filter(([k]) => !k.startsWith('_'))
+      .map(([name, d]) => `
+        <tr>
+          <td>${name}</td>
+          <td class="${d.current_streak > 2 ? 'streak-good' : 'streak-bad'}">${d.current_streak}d / ${d.max_streak}d</td>
+          <td>${d.avg_mins}m</td>
+          <td>${d.gap_hours}h</td>
+          <td class="${d.catch_up === 'never' ? 'catch-never' : ''}">${d.catch_up}</td>
+        </tr>
+      `).join('');
+    gapEl.innerHTML = rows;
+  }
+
+  // Maintenance + reality
+  if (gaps._maintenance) {
+    const rc = document.getElementById('reality-card');
+    const rd = document.getElementById('reality');
+    rc.style.display = 'block';
+    const m = gaps._maintenance;
+    let msgs = [];
+    if (m.daily_avg_mins > 120) {
+      msgs.push(`🔥 Maintenance burn: <strong>${m.daily_avg_mins}m/day</strong> (${m.weekly_hours}h/week) — crowding out ideal work.`);
+    }
+    if (gaps.research && gaps.research.avg_mins < gaps.research.target * 0.5) {
+      const short = ((gaps.research.target - gaps.research.avg_mins) * 7 / 60).toFixed(1);
+      msgs.push(`🥀 Research gap: ${short}h/week short. Stated preference ≠ ground truth.`);
+    }
+    rd.innerHTML = msgs.map(m => `<p style="margin-bottom:0.5rem">${m}</p>`).join('');
+  }
+}
+
+load().catch(e => console.error(e));
+</script>
+
+</body>
+</html>

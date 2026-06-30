@@ -1,0 +1,78 @@
+# Stated preferences → ground truth tracking
+# Time logged in Toggl with matching keywords counts toward the goal.
+# No checkbox. No manual input. Automatic from Toggl data.
+
+goals:
+  meditation:
+    target_mins: 10
+    tier: non-negotiable
+    keywords: [meditate, meditation, breathe]
+    icon: 🧘
+    color: "#22c55e"
+
+  language:
+    target_mins: 15
+    tier: non-negotiable
+    keywords: [duolingo, arabic, language, learn arabic]
+    icon: 🗣️
+    color: "#22c55e"
+
+  research:
+    target_mins: 90
+    tier: high-ideal
+    keywords:
+      - research
+      - mech interp
+      - mechanistic
+      - interpretability
+      - probe bank
+      - alignment
+      - mi tutorial
+      - socratic mi
+      - reversible activations
+      - esa-arch
+    icon: 🔬
+    color: "#ef4444"
+
+  learning:
+    target_mins: 60
+    tier: high-ideal
+    keywords:
+      - opencourseware
+      - mit
+      - course
+      - lecture
+      - fear and trembling
+      - reading
+      - readest
+      - book
+      - power of awareness
+      - goddard
+      - spinoza
+      - kabbalah
+    icon: 📚
+    color: "#ef4444"
+
+  fitness:
+    target_mins: 30
+    tier: foundation
+    keywords: [gym, walk, pray, deadlift, farmers, trap bar, workout]
+    icon: 💪
+    color: "#eab308"
+
+# These keywords mark entries as "maintenance" (school/exam/work obligations).
+# Tracked separately so they don't subsidize high-ideal goals.
+maintenance_keywords:
+  - exam
+  - final
+  - prep
+  - grind
+  - dbms
+  - os
+  - operating system
+  - data analytics
+  - study
+  - assignment
+  - homework
+  - quiz
+  - internals
