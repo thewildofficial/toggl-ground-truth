@@ -15,13 +15,16 @@ class StreakEngine:
         """Map date -> {goal_name: seconds}."""
         daily = defaultdict(lambda: defaultdict(int))
         maintenance = defaultdict(int)
+        tax = defaultdict(int)
         for e in entries:
             date = e["date"]
             for cat in e.get("categories", []):
                 daily[date][cat] += e["duration"]
             if e.get("is_maintenance"):
                 maintenance[date] += e["duration"]
-        return dict(daily), dict(maintenance)
+            elif e.get("is_tax"):
+                tax[date] += e["duration"]
+        return dict(daily), dict(maintenance), dict(tax)
 
     def compute_streaks(self, full_days: List[str], daily: Dict[str, Dict[str, int]]) -> Dict[str, Dict]:
         streaks = {}
@@ -76,10 +79,11 @@ class StreakEngine:
 
 
 class Report:
-    def __init__(self, streaks: Dict, daily: Dict, maintenance: Dict, full_days: List[str], config: Config = None):
+    def __init__(self, streaks: Dict, daily: Dict, maintenance: Dict, tax: Dict, full_days: List[str], config: Config = None):
         self.streaks = streaks
         self.daily = daily
         self.maintenance = maintenance
+        self.tax = tax
         self.full_days = full_days
         self.cfg = config or Config()
         self.engine = StreakEngine(self.cfg)
@@ -132,12 +136,25 @@ class Report:
             "daily_avg_mins": round(avg_mins, 1),
         }
 
+    def tax_stats(self) -> Dict:
+        recent = self.full_days[-7:]
+        total = sum(self.tax.get(d, 0) for d in recent)
+        avg_mins = (total / len(recent)) / 60 if recent else 0
+        today_secs = self.tax.get(self.today, 0)
+        today_mins = today_secs / 60
+        return {
+            "weekly_hours": round(total / 3600, 1),
+            "daily_avg_mins": round(avg_mins, 1),
+            "today_mins": round(today_mins, 1),
+        }
+
     def reality_check(self) -> List[Dict]:
         """Brutal truths."""
         truths = []
         research_avg = self.engine.rolling_avg(self.full_days, self.daily, "research", 7)
         research_target = self.cfg.goals["research"].target_mins
         maint = self.maintenance_stats()
+        tax = self.tax_stats()
 
         if research_avg < research_target * 0.5:
             weekly_short = (research_target - research_avg) * 7 / 60
@@ -149,5 +166,10 @@ class Report:
             truths.append({
                 "severity": "warning",
                 "message": f"Maintenance burn {maint['daily_avg_mins']:.0f}m/day crowding out high-ideal work.",
+            })
+        if tax["daily_avg_mins"] > 60:
+            truths.append({
+                "severity": "warning",
+                "message": f"Productivity tax {tax['daily_avg_mins']:.0f}m/day. Could fund {tax['daily_avg_mins']/30:.0f}x 30m goal blocks.",
             })
         return truths

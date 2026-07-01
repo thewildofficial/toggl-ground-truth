@@ -42,6 +42,10 @@ class Categorizer:
         d = desc.lower()
         return any(kw in d for kw in self.maint_kws)
 
+    def is_tax(self, desc: str) -> bool:
+        d = desc.lower()
+        return any(kw in d for kw in self.cfg.tax_keywords)
+
     def categorize(self, desc: str) -> List[str]:
         d = desc.lower()
         cats = []
@@ -63,13 +67,20 @@ class Categorizer:
             if dur < 0:
                 dur = int((datetime.now(timezone.utc) - start.astimezone(timezone.utc)).total_seconds())
             desc = e.get("description", "")
+            cats = self.categorize(desc)
+            is_maint = self.is_maintenance(desc)
+            is_tax = self.is_tax(desc)
+            # Tax = no goal match AND not maintenance
+            if not cats and not is_maint:
+                is_tax = True
             parsed.append({
                 "id": e.get("id"),
                 "date": start.strftime("%Y-%m-%d"),
                 "description": desc,
                 "duration": dur,
-                "categories": self.categorize(desc),
-                "is_maintenance": self.is_maintenance(desc),
+                "categories": cats,
+                "is_maintenance": is_maint,
+                "is_tax": is_tax,
                 "raw": e,
             })
         return parsed

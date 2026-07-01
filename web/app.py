@@ -43,7 +43,7 @@ def today():
 
     # Get entries from store
     conn = store._conn()
-    rows = conn.execute("SELECT date, description, duration, categories, is_maintenance FROM entries ORDER BY date").fetchall()
+    rows = conn.execute("SELECT date, description, duration, categories, is_maintenance, is_tax FROM entries ORDER BY date").fetchall()
     conn.close()
 
     entries = []
@@ -54,13 +54,14 @@ def today():
             "duration": r[2],
             "categories": json.loads(r[3]) if r[3] else [],
             "is_maintenance": bool(r[4]),
+            "is_tax": bool(r[5]) if r[5] is not None else False,
         })
 
     if not entries:
         return jsonify({"message": "No entries yet"})
 
     dates = sorted(set(e["date"] for e in entries))
-    daily, maintenance = engine.build_daily(entries)
+    daily, maintenance, tax = engine.build_daily(entries)
     full_days = engine.make_day_range(dates[0], dates[-1])
     streaks = engine.compute_streaks(full_days, daily)
     today_str = full_days[-1]
@@ -84,13 +85,15 @@ def today():
         })
 
     maint_mins = maintenance.get(today_str, 0) / 60
+    tax_mins = tax.get(today_str, 0) / 60
     total_mins = sum(board[b]["actual"] for b in range(len(board)))
 
     return jsonify({
         "date": today_str,
         "goals": board,
         "maintenance_mins": round(maint_mins, 1),
-        "total_tracked_mins": round(total_mins + maint_mins, 1),
+        "tax_mins": round(tax_mins, 1),
+        "total_tracked_mins": round(total_mins + maint_mins + tax_mins, 1),
     })
 
 @app.route("/api/history")
@@ -124,7 +127,7 @@ def gaps():
     cat = Categorizer(config)
 
     conn = store._conn()
-    rows = conn.execute("SELECT date, description, duration, categories, is_maintenance FROM entries ORDER BY date").fetchall()
+    rows = conn.execute("SELECT date, description, duration, categories, is_maintenance, is_tax FROM entries ORDER BY date").fetchall()
     conn.close()
 
     entries = []
@@ -135,10 +138,11 @@ def gaps():
             "duration": r[2],
             "categories": json.loads(r[3]) if r[3] else [],
             "is_maintenance": bool(r[4]),
+            "is_tax": bool(r[5]) if r[5] is not None else False,
         })
 
     dates = sorted(set(e["date"] for e in entries))
-    daily, maintenance = engine.build_daily(entries)
+    daily, maintenance, tax = engine.build_daily(entries)
     full_days = engine.make_day_range(dates[0], dates[-1])
     streaks = engine.compute_streaks(full_days, daily)
 
@@ -159,9 +163,14 @@ def gaps():
     # Maintenance stats
     recent = full_days[-7:]
     maint_total = sum(maintenance.get(d, 0) for d in recent)
+    tax_total = sum(tax.get(d, 0) for d in recent)
     result["_maintenance"] = {
         "weekly_hours": round(maint_total / 3600, 1),
         "daily_avg_mins": round(maint_total / 7 / 60, 1),
+    }
+    result["_tax"] = {
+        "weekly_hours": round(tax_total / 3600, 1),
+        "daily_avg_mins": round(tax_total / 7 / 60, 1),
     }
 
     return jsonify(result)

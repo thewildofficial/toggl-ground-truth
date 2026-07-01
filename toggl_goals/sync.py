@@ -45,7 +45,7 @@ class Syncer:
 
         # Recompute and save daily scores for all affected dates
         dates = sorted(set(e["date"] for e in entries))
-        daily, maintenance = self.engine.build_daily(entries)
+        daily, maintenance, tax = self.engine.build_daily(entries)
         full_days = self.engine.make_day_range(dates[0], dates[-1])
         streaks = self.engine.compute_streaks(full_days, daily)
 
@@ -53,8 +53,9 @@ class Syncer:
             scores = daily.get(day, {})
             total = sum(scores.values())
             maint = maintenance.get(day, 0)
+            t = tax.get(day, 0)
             day_streaks = {name: streaks[name]["current"] for name in streaks}
-            self.store.save_day(day, scores, maint, total, day_streaks)
+            self.store.save_day(day, scores, maint, t, total, day_streaks)
 
         self.store.set_meta("last_sync", datetime.now(timezone.utc).isoformat())
 

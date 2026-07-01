@@ -37,6 +37,10 @@ class Config:
         return [k.lower() for k in self._raw.get("maintenance_keywords", [])]
 
     @property
+    def tax_keywords(self) -> List[str]:
+        return [k.lower() for k in self._raw.get("tax_keywords", [])]
+
+    @property
     def non_negotiables(self) -> List[str]:
         return [n for n, g in self.goals.items() if g.tier == "non-negotiable"]
 

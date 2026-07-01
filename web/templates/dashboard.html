@@ -128,6 +128,11 @@ h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
   <div id="reality"></div>
 </div>
 
+<div class="card">
+  <h2>Productivity Tax</h2>
+  <div id="tax" style="font-size:0.9rem"></div>
+</div>
+
 <script>
 async function load() {
   const statusEl = document.getElementById('status');
@@ -232,7 +237,37 @@ async function load() {
       const short = ((gaps.research.target - gaps.research.avg_mins) * 7 / 60).toFixed(1);
       msgs.push(`🥀 Research gap: ${short}h/week short. Stated preference ≠ ground truth.`);
     }
+    if (gaps._tax && gaps._tax.daily_avg_mins > 60) {
+      msgs.push(`💸 Tax ${gaps._tax.daily_avg_mins}m/day. Could fund ${Math.round(gaps._tax.daily_avg_mins / 30)}x 30m goal blocks.`);
+    }
     rd.innerHTML = msgs.map(m => `<p style="margin-bottom:0.5rem">${m}</p>`).join('');
+  }
+
+  // Tax card
+  const taxEl = document.getElementById('tax');
+  if (gaps._tax) {
+    taxEl.innerHTML = `
+      <div style="display:flex;gap:2rem;margin-bottom:1rem">
+        <div>
+          <div style="color:var(--text-dim);font-size:0.75rem">TODAY</div>
+          <div style="font-size:1.4rem;font-weight:600;color:var(--red)">${today.tax_mins || 0}m</div>
+        </div>
+        <div>
+          <div style="color:var(--text-dim);font-size:0.75rem">7D AVG</div>
+          <div style="font-size:1.4rem;font-weight:600">${gaps._tax.daily_avg_mins}m</div>
+        </div>
+        <div>
+          <div style="color:var(--text-dim);font-size:0.75rem">WEEKLY</div>
+          <div style="font-size:1.4rem;font-weight:600">${gaps._tax.weekly_hours}h</div>
+        </div>
+      </div>
+      <div style="color:var(--text-dim)">
+        Tax = time not matching any goal or maintenance. <br>
+        ${Math.round(gaps._tax.daily_avg_mins / 30)}x 30m goal blocks available at current pace.
+      </div>
+    `;
+  } else {
+    taxEl.innerHTML = '<span style="color:var(--text-dim)">No tax data.</span>';
   }
 }
 
