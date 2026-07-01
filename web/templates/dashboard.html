@@ -130,6 +130,23 @@ h1 { font-size: 1.8rem; margin-bottom: 0.3rem; }
 
 <script>
 async function load() {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = '⏳ Syncing with Toggl...';
+
+  // 1. Auto-sync on page load
+  try {
+    const syncResp = await fetch('/api/sync', {method: 'POST'});
+    const syncData = await syncResp.json();
+    if (syncData.status === 'ok') {
+      statusEl.textContent = `✅ Synced ${syncData.new} new entries. Loading...`;
+    } else {
+      statusEl.textContent = '⚠️ Sync returned no new data. Loading cached...';
+    }
+  } catch (e) {
+    statusEl.textContent = '⚠️ Sync failed (offline?). Loading cached...';
+  }
+
+  // 2. Load fresh data
   const [today, history, gaps, status] = await Promise.all([
     fetch('/api/today').then(r => r.json()),
     fetch('/api/history').then(r => r.json()),
