@@ -1,0 +1,18 @@
+[Unit]
+Description=Ground Truth Goals Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/projects/toggl-goals
+Environment=GTG_USER=aban
+Environment=GTG_PASS=groundtruth
+Environment=PYTHONPATH=/root/projects/toggl-goals
+# Use the same Python that has Flask installed (Hermes venv)
+ExecStart=/usr/local/lib/hermes-agent/venv/bin/python3 /root/projects/toggl-goals/run.py web --host 127.0.0.1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
