@@ -38,6 +38,8 @@ goals:
       - socratic mi
       - reversible activations
       - esa-arch
+      - learnmechint
+      - mechint
     icon: 🔬
     color: "#ef4444"
 
