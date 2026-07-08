@@ -83,6 +83,37 @@ goals:
     icon: 💪
     color: "#eab308"
 
+  # ---- MINIMIZE GOALS: less time = higher score ----
+  # Negative feedback loop. 0 minutes = score 1.0 (perfect). cap = score 0.0.
+  # Fed by Toggl tax entries + browser extension screen-time logging.
+  doom_scroll:
+    type: minimize
+    cap_mins: 30
+    tier: non-negotiable
+    keywords: [doom scroll, doomscroll, x scroll, phone, idle, waste, procrastinate, brainrot, short form, shorts, reels]
+    color: "#ef4444"
+
+  youtube:
+    type: minimize
+    cap_mins: 60
+    tier: high-ideal
+    keywords: [youtube]
+    color: "#f87171"
+
+  social_media:
+    type: minimize
+    cap_mins: 45
+    tier: high-ideal
+    keywords: [x scroll, twitter, instagram, tiktok, reels, shorts]
+    color: "#fbbf24"
+
+  porn:
+    type: minimize
+    cap_mins: 0
+    tier: non-negotiable
+    keywords: [goon, coom]
+    color: "#dc2626"
+
 # These keywords mark entries as "maintenance" (school/exam/work obligations).
 # Tracked separately so they don't subsidize high-ideal goals.
 maintenance_keywords:

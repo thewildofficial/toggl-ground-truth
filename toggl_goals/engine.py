@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 import math
 
-from .config import Config
+from .config import Config, Goal
 
 
 class StreakEngine:
@@ -12,23 +12,94 @@ class StreakEngine:
         self.goals = self.cfg.goals
 
     def build_daily(self, entries: List[Dict]) -> Dict[str, Dict[str, int]]:
-        """Map date -> {goal_name: seconds}."""
+        """Map date -> {goal_name: seconds}.
+
+        For maximize goals, only entries with matching goal keywords count.
+        For minimize goals, both entries with matching goal keywords AND tax entries
+        matching the minimize goal's keywords count (so doom-scrolling via Toggl
+        tax entries drags the minimize goal down).
+        """
         daily = defaultdict(lambda: defaultdict(int))
         maintenance = defaultdict(int)
         tax = defaultdict(int)
+        minimize_goals = {n: g for n, g in self.goals.items() if g.is_minimize}
         for e in entries:
             date = e["date"]
-            for cat in e.get("categories", []):
+            cats = e.get("categories", [])
+            for cat in cats:
                 daily[date][cat] += e["duration"]
+            # Minimize goals also consume tax entries that match their keywords.
+            # This makes the Toggl "tax" bucket (youtube, doom scroll, etc.) drag
+            # down the corresponding minimize goal. Skip if already categorized
+            # (cats non-empty) to avoid double counting.
+            if e.get("is_tax") and not cats:
+                desc = (e.get("description") or "").lower()
+                for gname, goal in minimize_goals.items():
+                    if any(kw in desc for kw in goal.keywords):
+                        daily[date][gname] += e["duration"]
             if e.get("is_maintenance"):
                 maintenance[date] += e["duration"]
             elif e.get("is_tax"):
                 tax[date] += e["duration"]
         return dict(daily), dict(maintenance), dict(tax)
 
+    def merge_screen_time(self, daily: Dict[str, Dict[str, int]], screen_time_by_date: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, int]]:
+        """Merge screen_time data into the daily dict for minimize goals.
+
+        screen_time_by_date: {date: {category: seconds}}
+        Category names map to minimize goal names (e.g. "youtube" → youtube goal).
+        Seconds are added on top of any Toggl-derived time for that goal/date.
+        screen_time is stored in SECONDS; daily is also in SECONDS (EMA does /60).
+        """
+        minimize_goals = {n: g for n, g in self.goals.items() if g.is_minimize}
+        # Build alias map: screen_time category -> minimize goal name
+        alias_map = {}
+        for gname, goal in minimize_goals.items():
+            alias_map[gname] = gname
+            alias_map[gname.replace("_", " ")] = gname
+            for kw in goal.keywords:
+                alias_map[kw] = gname
+        result = {d: dict(v) for d, v in daily.items()}
+        for date, cats in screen_time_by_date.items():
+            for category, secs in cats.items():
+                gname = alias_map.get(category) or alias_map.get(category.lower())
+                if not gname:
+                    norm = category.lower().replace(" ", "_")
+                    gname = alias_map.get(norm)
+                if gname:
+                    result.setdefault(date, {})
+                    result[date][gname] = result[date].get(gname, 0) + int(secs)
+        return result
+
     def compute_streaks(self, full_days: List[str], daily: Dict[str, Dict[str, int]]) -> Dict[str, Dict]:
         streaks = {}
         for name, goal in self.goals.items():
+            if goal.is_minimize:
+                target_secs = goal.cap_mins * 60  # cap
+                streak = 0
+                max_streak = 0
+                gap_total = 0
+                log = []
+                for day in full_days:
+                    actual = daily.get(day, {}).get(name, 0)
+                    met = actual <= target_secs  # minimize: under cap = good
+                    log.append({"date": day, "seconds": actual, "met": met})
+                    if met:
+                        streak += 1
+                        max_streak = max(max_streak, streak)
+                    else:
+                        streak = 0
+                    if actual > target_secs:
+                        gap_total += (actual - target_secs)
+                streaks[name] = {
+                    "current": streak,
+                    "max": max_streak,
+                    "gap_total": gap_total,
+                    "log": log,
+                    "type": "minimize",
+                    "cap": goal.cap_mins,
+                }
+                continue
             target_secs = goal.target_mins * 60
             streak = 0
             max_streak = 0
@@ -63,49 +134,6 @@ class StreakEngine:
 
     EMA_MULTIPLIER_DAILY = 0.5 ** (1.0 / 13.0)  # ≈ 0.9487 for frequency=1.0
 
-    def compute_ema_scores(self, full_days: List[str], daily: Dict, goal_name: str, target_mins: int) -> List[Dict]:
-        """Per-goal EMA score history (0.0-1.0). Ported from Loop's Score.compute()."""
-        multiplier = self.EMA_MULTIPLIER_DAILY
-        prev = 0.0
-        scores = []
-        for day in full_days:
-            secs = daily.get(day, {}).get(goal_name, 0)
-            mins = secs / 60
-            checkmark = min(mins / target_mins, 1.0) if target_mins > 0 else 0.0
-            prev = prev * multiplier + checkmark * (1 - multiplier)
-            scores.append({"date": day, "score": round(prev * 100, 1), "checkmark": round(checkmark, 2)})
-        return scores
-
-    def compute_all_ema(self, full_days: List[str], daily: Dict) -> Dict[str, List[Dict]]:
-        """EMA scores for all goals. Returns {goal_name: [{date, score, checkmark}, ...]}."""
-        result = {}
-        for name, goal in self.goals.items():
-            result[name] = self.compute_ema_scores(full_days, daily, name, goal.target_mins)
-        return result
-
-    def composite_ema_score(self, full_days: List[str], daily: Dict) -> List[Dict]:
-        """Weighted composite EMA score across all goals (0-100). Non-negotiables = 2x weight."""
-        TIER_WEIGHT = {"non-negotiable": 2.0, "high-ideal": 1.0, "foundation": 1.0}
-        per_goal = {}
-        for name, goal in self.cfg.goals.items():
-            per_goal[name] = self.compute_ema_scores(full_days, daily, name, goal.target_mins)
-        total_weight = sum(TIER_WEIGHT.get(g.tier, 1.0) for g in self.cfg.goals.values())
-        composite = []
-        for i, day in enumerate(full_days):
-            weighted_sum = 0.0
-            breakdown = {}
-            for name, goal in self.cfg.goals.items():
-                w = TIER_WEIGHT.get(goal.tier, 1.0)
-                score_01 = per_goal[name][i]["score"] / 100 if i < len(per_goal[name]) else 0
-                weighted_sum += score_01 * w
-                breakdown[name] = round(score_01 * 100, 1)
-            composite.append({
-                "date": day,
-                "score": round((weighted_sum / total_weight) * 100, 1),
-                "breakdown": breakdown,
-            })
-        return composite
-
     def rolling_avg(self, full_days: List[str], daily: Dict, goal_name: str, days: int = 7) -> float:
         recent = full_days[-days:] if len(full_days) >= days else full_days
         total = sum(daily.get(day, {}).get(goal_name, 0) for day in recent)
@@ -129,6 +157,72 @@ class StreakEngine:
             days.append(cur.strftime("%Y-%m-%d"))
             cur += timedelta(days=1)
         return days
+
+    # ---- EMA scoring (ported from Loop Habit Tracker's Score.compute) ----
+    # score = prevScore * multiplier + checkmarkValue * (1 - multiplier)
+    # For daily goals (frequency=1.0): multiplier ≈ 0.9487
+    # Each day: 5.13% toward today's value, 94.87% carry-forward
+    # Misses decay gradually, don't reset to 0
+    EMA_MULTIPLIER_DAILY = 0.5 ** (1.0 / 13.0)  # ≈ 0.9487 for frequency=1.0
+
+    def compute_ema_scores(self, full_days: List[str], daily: Dict, goal_name: str, threshold_mins: int = None, goal: Goal = None) -> List[Dict]:
+        """Per-goal EMA score history (0.0-1.0). Ported from Loop's Score.compute().
+
+        For maximize goals: checkmark = min(1.0, minutes/target_mins)
+        For minimize goals:  checkmark = max(0, 1 - minutes/cap_mins)
+        """
+        if goal is None:
+            goal = self.goals.get(goal_name)
+        if threshold_mins is None:
+            threshold_mins = goal.threshold_mins if goal else 0
+        is_minimize = bool(goal and goal.is_minimize)
+        multiplier = self.EMA_MULTIPLIER_DAILY
+        prev = 0.0
+        scores = []
+        for day in full_days:
+            secs = daily.get(day, {}).get(goal_name, 0)
+            mins = secs / 60
+            if is_minimize:
+                checkmark = max(0.0, 1.0 - mins / threshold_mins) if threshold_mins > 0 else 1.0
+            else:
+                checkmark = min(mins / threshold_mins, 1.0) if threshold_mins > 0 else 0.0
+            prev = prev * multiplier + checkmark * (1 - multiplier)
+            scores.append({"date": day, "score": round(prev * 100, 1), "checkmark": round(checkmark, 2)})
+        return scores
+
+    def compute_all_ema(self, full_days: List[str], daily: Dict) -> Dict[str, List[Dict]]:
+        """EMA scores for all goals. Returns {goal_name: [{date, score, checkmark}, ...]}."""
+        result = {}
+        for name, goal in self.goals.items():
+            result[name] = self.compute_ema_scores(full_days, daily, name, goal=goal)
+        return result
+
+    def composite_ema_score(self, full_days: List[str], daily: Dict) -> List[Dict]:
+        """Weighted composite EMA score across all goals (0-100). Non-negotiables = 2x weight.
+
+        Minimize goals are included with the same tier weighting; their checkmark is
+        already inverted in compute_ema_scores, so a high score = little time spent.
+        """
+        TIER_WEIGHT = {"non-negotiable": 2.0, "high-ideal": 1.0, "foundation": 1.0}
+        per_goal = {}
+        for name, goal in self.cfg.goals.items():
+            per_goal[name] = self.compute_ema_scores(full_days, daily, name, goal=goal)
+        total_weight = sum(TIER_WEIGHT.get(g.tier, 1.0) for g in self.cfg.goals.values())
+        composite = []
+        for i, day in enumerate(full_days):
+            weighted_sum = 0.0
+            breakdown = {}
+            for name, goal in self.cfg.goals.items():
+                w = TIER_WEIGHT.get(goal.tier, 1.0)
+                score_01 = per_goal[name][i]["score"] / 100 if i < len(per_goal[name]) else 0
+                weighted_sum += score_01 * w
+                breakdown[name] = round(score_01 * 100, 1)
+            composite.append({
+                "date": day,
+                "score": round((weighted_sum / total_weight) * 100, 1) if total_weight else 0,
+                "breakdown": breakdown,
+            })
+        return composite
 
 
 class Report:
