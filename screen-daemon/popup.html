@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, sans-serif; background: #0c0d10; color: #e8eaf0; padding: 16px; min-width: 320px; }
+  h2 { font-size: 1rem; margin: 0 0 12px; }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 0.85rem; }
+  .row.dim { color: #6b7280; }
+  .cat { color: #f87171; }
+  .ok { color: #34d399; }
+  #api-base { width: 100%; background: #1e2128; color: #e8eaf0; border: none; border-radius: 6px; padding: 8px; font-size: 0.8rem; margin-bottom: 12px; }
+  label { font-size: 0.72rem; color: #9aa0ad; text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 4px; }
+  .btn { background: #60a5fa; color: #0c0d10; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; cursor: pointer; width: 100%; }
+</style>
+</head>
+<body>
+  <h2>Ground Truth Daemon</h2>
+  <div id="status">
+    <div class="row dim">Loading...</div>
+  </div>
+  <hr style="border: none; border-top: 1px solid #272b34; margin: 12px 0;">
+  <label>API Base URL</label>
+  <input id="api-base" value="http://178.105.235.219">
+  <button class="btn" id="save">Save</button>
+  <script src="popup.js"></script>
+</body>
+</html>
