@@ -257,6 +257,13 @@ def _build_report():
     dates = sorted(set(e["date"] for e in entries))
     daily, maintenance, tax = engine.build_daily(entries)
     full_days = engine.make_day_range(dates[0], dates[-1])
+
+    # Merge screen_time data into daily for minimize goals.
+    # Pull screen_time for the full date range so historical EMA is accurate.
+    screen_time_by_date = store.get_screen_time_range(full_days[0], full_days[-1])
+    if screen_time_by_date:
+        daily = engine.merge_screen_time(daily, screen_time_by_date)
+
     streaks = engine.compute_streaks(full_days, daily)
     report = Report(streaks, daily, maintenance, tax, full_days, config)
     return report
@@ -345,6 +352,35 @@ def ema_today():
     if not report:
         return jsonify({"score": 0, "breakdown": {}})
     return jsonify(report.ema_today())
+
+@app.route("/api/screen-time", methods=["GET", "POST"])
+def screen_time():
+    """GET: per-category daily screen time for last N days (?days=7).
+    POST: log screen_time records. Accepts single {date, category, seconds, source?}
+          or batch {entries: [{date, category, seconds, source}]} (from extension)."""
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        records = data.get("entries", [data]) if "entries" in data else [data]
+        saved = []
+        for rec in records:
+            date = rec.get("date")
+            category = rec.get("category")
+            seconds = rec.get("seconds")
+            source = rec.get("source", "extension")
+            if not date or not category or seconds is None:
+                return jsonify({"error": "Required fields: date, category, seconds"}), 400
+            try:
+                seconds = int(seconds)
+            except (ValueError, TypeError):
+                return jsonify({"error": "seconds must be an integer"}), 400
+            if seconds < 0:
+                return jsonify({"error": "seconds must be non-negative"}), 400
+            store.log_screen_time(date, category, seconds, source)
+            saved.append({"date": date, "category": category, "seconds": seconds, "source": source})
+        return jsonify({"status": "ok", "saved": saved})
+    days = request.args.get("days", 7, type=int)
+    result = store.get_screen_time_days(days)
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

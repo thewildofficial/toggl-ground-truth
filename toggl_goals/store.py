@@ -43,8 +43,25 @@ def init_db():
             value TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS screen_time (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            category TEXT NOT NULL,  -- "youtube", "doom_scroll", "social_media", "porn", etc.
+            source TEXT NOT NULL,     -- "extension", "toggl"
+            seconds INTEGER NOT NULL,
+            logged_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_screen_time_date ON screen_time(date)
+    """)
+    conn.commit()
+    conn.close()
+
     # Migrate: add is_tax column if missing (from old versions)
     try:
+        conn = sqlite3.connect(str(DB_PATH))
         conn.execute("ALTER TABLE entries ADD COLUMN is_tax INTEGER")
     except sqlite3.OperationalError:
         pass
@@ -164,3 +181,49 @@ class Store:
         conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
         conn.close()
+
+    # ---- screen_time (from browser extension / phone apps) ----
+    def log_screen_time(self, date: str, category: str, seconds: int, source: str = "extension"):
+        conn = self._conn()
+        conn.execute(
+            "INSERT INTO screen_time (date, category, source, seconds) VALUES (?, ?, ?, ?)",
+            (date, category, source, int(seconds)),
+        )
+        conn.commit()
+        conn.close()
+
+    def get_screen_time(self, date: str) -> Dict[str, int]:
+        """Category -> total seconds for a single date."""
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT category, SUM(seconds) FROM screen_time WHERE date = ? GROUP BY category",
+            (date,),
+        ).fetchall()
+        conn.close()
+        return {r[0]: r[1] for r in rows}
+
+    def get_screen_time_range(self, start: str, end: str) -> Dict[str, Dict[str, int]]:
+        """{date: {category: seconds}} for date range inclusive."""
+        conn = self._conn()
+        rows = conn.execute(
+            "SELECT date, category, SUM(seconds) FROM screen_time WHERE date >= ? AND date <= ? GROUP BY date, category",
+            (start, end),
+        ).fetchall()
+        conn.close()
+        result = {}
+        for date, cat, secs in rows:
+            result.setdefault(date, {})[cat] = secs
+        return result
+
+    def get_screen_time_days(self, days: int = 7) -> List[Dict]:
+        """Last N days as list of {date, categories: {cat: secs}}."""
+        conn = self._conn()
+        rows = conn.execute(
+            """SELECT date, category, SUM(seconds) FROM screen_time
+               GROUP BY date, category ORDER BY date""",
+        ).fetchall()
+        conn.close()
+        by_date = {}
+        for date, cat, secs in rows:
+            by_date.setdefault(date, {})[cat] = secs
+        return [{"date": d, "categories": cats} for d, cats in sorted(by_date.items())]
