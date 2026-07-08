@@ -17,6 +17,10 @@
   <input id="api-base" value="http://178.105.235.219">
   <p class="note">The Flask backend URL where screen time data is sent.</p>
 
+  <label>API Token</label>
+  <input id="api-token" type="password" placeholder="paste token from server">
+  <p class="note">Required for the extension to write data. Get it from Prometheus: on the server, <code>cat /root/.hermes/credentials/gtg_api_token.txt</code>. Leave blank to use basic-auth fallback.</p>
+
   <label>Poll interval (seconds)</label>
   <input id="poll-interval" type="number" value="5" min="1" max="60">
   <p class="note">How often to check the active tab. 5s is recommended.</p>
