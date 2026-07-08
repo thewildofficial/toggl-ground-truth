@@ -16,7 +16,7 @@
     "activeTab"
   ],
   "host_permissions": [
-    "http://localhost/*",
+    "http://*/*",
     "http://localhost:5000/*",
     "https://*.youtube.com/*",
     "https://*.x.com/*",
@@ -29,8 +29,7 @@
     "scripts": ["background.js"]
   },
   "options_ui": {
-    "page": "options.html",
-    "browser_style": true
+    "page": "options.html"
   },
   "action": {
     "default_title": "Ground Truth Daemon",

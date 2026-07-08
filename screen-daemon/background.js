@@ -2,7 +2,7 @@
 // Watches active tab, classifies behavior, logs time per category.
 // Sends to Flask backend every 60 seconds.
 
-const DEFAULT_API_BASE = "http://localhost";
+const DEFAULT_API_BASE = "http://localhost:5000";
 const TICK_SECONDS_DEFAULT = 5;
 const FLUSH_INTERVAL = 60;
 
