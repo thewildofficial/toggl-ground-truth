@@ -11,6 +11,7 @@
 
   let todayGoals = $derived(store.today?.goals ?? []);
   let metCount = $derived(todayGoals.filter(g => g.met).length);
+  let todayBreakdown = $derived(store.scoreHistory.length ? store.scoreHistory[store.scoreHistory.length - 1].breakdown : null);
 </script>
 
 <header class="top">
@@ -35,7 +36,7 @@
 {:else}
   <!-- COMPACT DEFAULT VIEW: score + today at a glance -->
   <section class="hero">
-    <ScoreDonut score={store.todayScore} delta={store.scoreDelta} />
+    <ScoreDonut score={store.todayScore} delta={store.scoreDelta} breakdown={todayBreakdown} />
     <div class="hero-side">
       <div class="hero-stat">
         <span class="hs-num tabular">{metCount}/{todayGoals.length}</span>
