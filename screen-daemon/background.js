@@ -8,6 +8,7 @@ const FLUSH_INTERVAL = 60;
 
 let apiBase = DEFAULT_API_BASE;
 let tickSeconds = TICK_SECONDS_DEFAULT;
+let apiToken = "";
 
 // ---- classification rules ----
 // returns {category, ok: bool, note: string, togglGoal: string|null, ambiguous: bool}
@@ -84,7 +85,7 @@ async function getActiveTogglGoal() {
 
   lastTimerCheck = now;
   try {
-    const resp = await fetch(`${apiBase}/api/current`);
+    const resp = await fetch(`${apiBase}/api/current?token=${encodeURIComponent(apiToken)}`);
     if (!resp.ok) { cachedTimer = null; return null; }
     const data = await resp.json();
     if (data.running && data.categories && data.categories.length > 0) {
@@ -172,7 +173,7 @@ async function flushToBackend() {
     return { date, category, seconds, source: "extension" };
   });
   try {
-    const resp = await fetch(`${apiBase}/api/screen-time`, {
+    const resp = await fetch(`${apiBase}/api/screen-time?token=${encodeURIComponent(apiToken)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ entries: payload }),
@@ -193,9 +194,10 @@ browser.alarms.create("tick", { periodInMinutes: tickSeconds / 60 });
 browser.alarms.create("flush", { periodInMinutes: FLUSH_INTERVAL / 60 });
 
 // ---- load settings ----
-browser.storage.local.get(["apiBase", "pollInterval"]).then(r => {
+browser.storage.local.get(["apiBase", "pollInterval", "apiToken"]).then(r => {
   if (r.apiBase) apiBase = r.apiBase;
   if (r.pollInterval) tickSeconds = r.pollInterval;
+  if (r.apiToken) apiToken = r.apiToken;
 });
 
 // ---- message handler (popup asks for today's log) ----
