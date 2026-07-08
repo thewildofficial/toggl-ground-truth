@@ -12,7 +12,7 @@
 
   let todayGoals = $derived(store.today?.goals ?? []);
   let metCount = $derived(todayGoals.filter(g => g.met).length);
-  let todayBreakdown = $derived(store.scoreHistory.length ? store.scoreHistory[store.scoreHistory.length - 1].breakdown : null);
+  let todayBreakdown = $derived(store.emaBreakdown);
   let analytics = $derived(store.scoreAnalytics);
   let slopeLabel = $derived(analytics?.slope_label ?? '');
 </script>
@@ -100,9 +100,9 @@
 
     <!-- RIGHT COLUMN -->
     <div class="col">
-      <Section title="Score Trajectory" subtitle={slopeLabel ? slopeLabel + " — last 14 days" : "weighted composite, last 14 days"} badge={store.todayScore + '%'}>
+      <Section title="Score Trajectory" subtitle={slopeLabel ? slopeLabel + " — EMA, all days" : "EMA habit strength, all days"} badge={Math.round(store.todayScore) + '%'}>
         <ScoreTrend
-          data={store.scoreHistory}
+          data={store.emaComposite}
           movingAvg={analytics?.moving_avg}
           slope={analytics?.slope}
           forecast={analytics?.forecast}

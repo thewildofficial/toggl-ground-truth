@@ -9,8 +9,11 @@ class DashboardStore {
   scoreHistory = $state([]);
   heatmap = $state(null);
   timeAllocation = $state(null);
-  scoreAnalytics = $state(null);  // NEW: scores, moving_avg, slope, forecast
-  goalDepth = $state(null);        // NEW: per-goal daily minutes
+  scoreAnalytics = $state(null);
+  goalDepth = $state(null);
+  emaToday = $state(null);        // EMA composite today {score, breakdown}
+  emaComposite = $state([]);       // EMA composite history [{date, score, breakdown}]
+  emaScores = $state(null);        // per-goal EMA {history, today}
 
   loading = $state(true);
   syncing = $state(false);
@@ -21,7 +24,7 @@ class DashboardStore {
     this.loading = true;
     this.error = null;
     try {
-      const [status, today, gaps, scoreHistory, heatmap, timeAllocation, scoreAnalytics, goalDepth] = await Promise.all([
+      const [status, today, gaps, scoreHistory, heatmap, timeAllocation, scoreAnalytics, goalDepth, emaToday, emaComposite, emaScores] = await Promise.all([
         api.status(),
         api.today(),
         api.gaps(),
@@ -30,6 +33,9 @@ class DashboardStore {
         api.timeAllocation('today'),
         api.scoreAnalytics(14),
         api.goalDepth(7),
+        api.emaToday(),
+        api.emaComposite(),
+        api.emaScores(),
       ]);
       this.status = status;
       this.today = today;
@@ -39,6 +45,9 @@ class DashboardStore {
       this.timeAllocation = timeAllocation;
       this.scoreAnalytics = scoreAnalytics;
       this.goalDepth = goalDepth;
+      this.emaToday = emaToday;
+      this.emaComposite = emaComposite;
+      this.emaScores = emaScores;
       this.lastSyncAt = new Date();
     } catch (e) {
       this.error = e.message;
@@ -61,19 +70,23 @@ class DashboardStore {
 
   // ---- derived helpers ----
 
+  // EMA score for today (0-100)
   get todayScore() {
-    if (!this.scoreHistory.length) return 0;
-    return this.scoreHistory[this.scoreHistory.length - 1].score;
+    return this.emaToday?.score ?? 0;
   }
 
   get yesterdayScore() {
-    if (this.scoreHistory.length < 2) return null;
-    return this.scoreHistory[this.scoreHistory.length - 2].score;
+    if (this.emaComposite.length < 2) return null;
+    return this.emaComposite[this.emaComposite.length - 2].score;
   }
 
   get scoreDelta() {
     if (this.yesterdayScore === null) return null;
-    return this.todayScore - this.yesterdayScore;
+    return Math.round((this.todayScore - this.yesterdayScore) * 10) / 10;
+  }
+
+  get emaBreakdown() {
+    return this.emaToday?.breakdown ?? null;
   }
 }
 

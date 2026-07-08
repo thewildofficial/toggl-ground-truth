@@ -53,6 +53,59 @@ class StreakEngine:
             }
         return streaks
 
+    # ---- Loop EMA Score Formula ----
+    # Ported from uhabits-core/Score.kt
+    # multiplier = 0.5 ^ (sqrt(frequency) / 13.0)
+    # score = prevScore * multiplier + checkmarkValue * (1 - multiplier)
+    # For daily goals (frequency=1.0): multiplier ≈ 0.9487
+    # Each day: 5.13% toward today's value, 94.87% carry-forward
+    # Misses decay gradually, don't reset to 0
+
+    EMA_MULTIPLIER_DAILY = 0.5 ** (1.0 / 13.0)  # ≈ 0.9487 for frequency=1.0
+
+    def compute_ema_scores(self, full_days: List[str], daily: Dict, goal_name: str, target_mins: int) -> List[Dict]:
+        """Per-goal EMA score history (0.0-1.0). Ported from Loop's Score.compute()."""
+        multiplier = self.EMA_MULTIPLIER_DAILY
+        prev = 0.0
+        scores = []
+        for day in full_days:
+            secs = daily.get(day, {}).get(goal_name, 0)
+            mins = secs / 60
+            checkmark = min(mins / target_mins, 1.0) if target_mins > 0 else 0.0
+            prev = prev * multiplier + checkmark * (1 - multiplier)
+            scores.append({"date": day, "score": round(prev * 100, 1), "checkmark": round(checkmark, 2)})
+        return scores
+
+    def compute_all_ema(self, full_days: List[str], daily: Dict) -> Dict[str, List[Dict]]:
+        """EMA scores for all goals. Returns {goal_name: [{date, score, checkmark}, ...]}."""
+        result = {}
+        for name, goal in self.goals.items():
+            result[name] = self.compute_ema_scores(full_days, daily, name, goal.target_mins)
+        return result
+
+    def composite_ema_score(self, full_days: List[str], daily: Dict) -> List[Dict]:
+        """Weighted composite EMA score across all goals (0-100). Non-negotiables = 2x weight."""
+        TIER_WEIGHT = {"non-negotiable": 2.0, "high-ideal": 1.0, "foundation": 1.0}
+        per_goal = {}
+        for name, goal in self.cfg.goals.items():
+            per_goal[name] = self.compute_ema_scores(full_days, daily, name, goal.target_mins)
+        total_weight = sum(TIER_WEIGHT.get(g.tier, 1.0) for g in self.cfg.goals.values())
+        composite = []
+        for i, day in enumerate(full_days):
+            weighted_sum = 0.0
+            breakdown = {}
+            for name, goal in self.cfg.goals.items():
+                w = TIER_WEIGHT.get(goal.tier, 1.0)
+                score_01 = per_goal[name][i]["score"] / 100 if i < len(per_goal[name]) else 0
+                weighted_sum += score_01 * w
+                breakdown[name] = round(score_01 * 100, 1)
+            composite.append({
+                "date": day,
+                "score": round((weighted_sum / total_weight) * 100, 1),
+                "breakdown": breakdown,
+            })
+        return composite
+
     def rolling_avg(self, full_days: List[str], daily: Dict, goal_name: str, days: int = 7) -> float:
         recent = full_days[-days:] if len(full_days) >= days else full_days
         total = sum(daily.get(day, {}).get(goal_name, 0) for day in recent)
@@ -315,3 +368,25 @@ class Report:
             "tax_mins": round(tax_mins, 1),
             "total_mins": round(goal_mins + maint_mins + tax_mins, 1),
         }
+
+    # ---- EMA-based scores (Loop formula) ----
+
+    def ema_scores(self) -> Dict:
+        """Per-goal EMA score history + today's scores."""
+        all_ema = self.engine.compute_all_ema(self.full_days, self.daily)
+        today_scores = {}
+        for name, hist in all_ema.items():
+            today_scores[name] = hist[-1] if hist else {"date": self.today, "score": 0, "checkmark": 0}
+        return {"history": all_ema, "today": today_scores}
+
+    def ema_composite(self) -> List[Dict]:
+        """Composite EMA score (0-100) with per-goal breakdown, for all days."""
+        return self.engine.composite_ema_score(self.full_days, self.daily)
+
+    def ema_today(self) -> Dict:
+        """Today's EMA composite score + per-goal breakdown."""
+        composite = self.ema_composite()
+        if not composite:
+            return {"score": 0, "breakdown": {}}
+        today = composite[-1]
+        return today

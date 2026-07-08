@@ -1,7 +1,4 @@
 // API layer — wraps the Flask backend endpoints.
-// Basic auth is handled by the browser session (user already authed via the
-// basic-auth prompt). No credentials option needed — relative URLs + session auth.
-
 async function get(path) {
   const resp = await fetch(path);
   if (!resp.ok) throw new Error(`HTTP ${resp.status} on ${path}`);
@@ -18,6 +15,9 @@ export const api = {
   heatmap: (days = 90) => get(`/api/heatmap?days=${days}`),
   gapTrajectory: (goal, days = 14) => get(`/api/gap-trajectory?goal=${goal}&days=${days}`),
   timeAllocation: (date) => get(`/api/time-allocation?date=${date}`),
+  emaScores: () => get('/api/ema-scores'),
+  emaComposite: () => get('/api/ema-composite'),
+  emaToday: () => get('/api/ema-today'),
   sync: async () => {
     const resp = await fetch('/api/sync', { method: 'POST' });
     return resp.json();

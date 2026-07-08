@@ -298,5 +298,29 @@ def goal_depth():
     days = request.args.get("days", 7, type=int)
     return jsonify(report.goal_daily_minutes(days))
 
+@app.route("/api/ema-scores")
+def ema_scores():
+    """Per-goal EMA score history (Loop formula). Returns {history: {goal: [...]}, today: {goal: {score, checkmark}}}."""
+    report = _build_report()
+    if not report:
+        return jsonify({})
+    return jsonify(report.ema_scores())
+
+@app.route("/api/ema-composite")
+def ema_composite():
+    """Composite EMA score for all days. Uses Loop's EMA formula with tier weighting."""
+    report = _build_report()
+    if not report:
+        return jsonify([])
+    return jsonify(report.ema_composite())
+
+@app.route("/api/ema-today")
+def ema_today():
+    """Today's EMA composite score + per-goal breakdown."""
+    report = _build_report()
+    if not report:
+        return jsonify({"score": 0, "breakdown": {}})
+    return jsonify(report.ema_today())
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
