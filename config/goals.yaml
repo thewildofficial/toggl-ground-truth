@@ -40,6 +40,20 @@ goals:
       - esa-arch
       - learnmechint
       - mechint
+      - CS221M
+      - cs221m
+      - Stanford MI
+      - causal abstraction
+      - DAS
+      - distributed alignment search
+      - causal mediation
+      - activation patching
+      - sparse autoencoder
+      - SAE
+      - circuit tracing
+      - steering vector
+      - nullspace projection
+      - interchange intervention
     icon: 🔬
     color: "#ef4444"
 

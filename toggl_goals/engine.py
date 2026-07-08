@@ -173,3 +173,73 @@ class Report:
                 "message": f"Productivity tax {tax['daily_avg_mins']:.0f}m/day. Could fund {tax['daily_avg_mins']/30:.0f}x 30m goal blocks.",
             })
         return truths
+
+    def composite_score(self, date: str) -> Dict:
+        """Weighted daily score 0-100. Non-negotiable = 2x weight."""
+        TIER_WEIGHT = {"non-negotiable": 2.0, "high-ideal": 1.0, "foundation": 1.0}
+        total_weight = 0.0
+        earned = 0.0
+        breakdown = {}
+        for name, goal in self.cfg.goals.items():
+            w = TIER_WEIGHT.get(goal.tier, 1.0)
+            secs = self.daily.get(date, {}).get(name, 0)
+            mins = secs / 60
+            ratio = min(mins / goal.target_mins, 1.0) if goal.target_mins > 0 else 0
+            earned += ratio * w
+            total_weight += w
+            breakdown[name] = {
+                "ratio": round(ratio, 2),
+                "weight": w,
+                "tier": goal.tier,
+            }
+        score = round((earned / total_weight) * 100) if total_weight else 0
+        return {"date": date, "score": score, "breakdown": breakdown}
+
+    def score_history(self, days: int = 14) -> List[Dict]:
+        """Composite score for the last N days."""
+        window = self.full_days[-days:] if days else self.full_days
+        return [self.composite_score(d) for d in window]
+
+    def heatmap(self, days: int = 90) -> Dict:
+        """Per-goal daily completion ratio (0-1) for heatmap rendering."""
+        window = self.full_days[-days:] if days else self.full_days
+        result = {"dates": window, "goals": {}}
+        for name, goal in self.cfg.goals.items():
+            cells = []
+            for d in window:
+                secs = self.daily.get(d, {}).get(name, 0)
+                mins = secs / 60
+                ratio = min(mins / goal.target_mins, 1.0) if goal.target_mins > 0 else 0
+                cells.append(round(ratio, 2))
+            result["goals"][name] = cells
+        return result
+
+    def gap_trajectory(self, goal_name: str, days: int = 14) -> List[Dict]:
+        """Daily gap_hours for a goal over the last N days (using running streak logic)."""
+        if goal_name not in self.cfg.goals:
+            return []
+        window = self.full_days[-days:] if days else self.full_days
+        log = self.streaks[goal_name]["log"]
+        # map date -> gap at that point (cumulative)
+        log_by_date = {l["date"]: l for l in log}
+        traj = []
+        for d in window:
+            entry = log_by_date.get(d)
+            # gap at this date = gap_hours if missed, else decay toward 0
+            # approximate: use running cumulative from streaks
+            gap = entry["gap_hours"] if entry else 0
+            traj.append({"date": d, "gap_hours": round(gap, 1)})
+        return traj
+
+    def time_allocation(self, date: str) -> Dict:
+        """Goal vs maintenance vs tax minutes for a day (stacked bar)."""
+        goal_mins = sum(self.daily.get(date, {}).values()) / 60
+        maint_mins = self.maintenance.get(date, 0) / 60
+        tax_mins = self.tax.get(date, 0) / 60
+        return {
+            "date": date,
+            "goal_mins": round(goal_mins, 1),
+            "maintenance_mins": round(maint_mins, 1),
+            "tax_mins": round(tax_mins, 1),
+            "total_mins": round(goal_mins + maint_mins + tax_mins, 1),
+        }

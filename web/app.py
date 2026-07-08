@@ -4,12 +4,12 @@ from pathlib import Path
 from datetime import datetime, timezone
 from collections import defaultdict
 
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from flask_basicauth import BasicAuth
 
 from toggl_goals.config import Config
 from toggl_goals.store import Store
-from toggl_goals.engine import StreakEngine
+from toggl_goals.engine import StreakEngine, Report
 
 app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
 app.config['BASIC_AUTH_USERNAME'] = os.environ.get('GTG_USER', 'aban')
@@ -17,12 +17,26 @@ app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('GTG_PASS', 'groundtruth')
 app.config['BASIC_AUTH_FORCE'] = True
 basic_auth = BasicAuth(app)
 
+# Serve the built Svelte dashboard (dashboard-ui/dist) as static assets.
+DIST_DIR = Path(__file__).parent.parent / "dashboard-ui" / "dist"
+
+@app.route('/assets/<path:filename>')
+@basic_auth.required
+def serve_assets(filename):
+    return send_from_directory(str(DIST_DIR / 'assets'), filename)
+
+@app.route('/favicon.svg')
+def favicon():
+    return send_from_directory(str(DIST_DIR), 'favicon.svg')
+
 store = Store()
 config = Config()
 engine = StreakEngine(config)
 
 @app.route("/")
 def index():
+    if DIST_DIR.exists():
+        return send_from_directory(str(DIST_DIR), "index.html")
     return render_template("dashboard.html")
 
 @app.route("/api/status")
@@ -196,6 +210,65 @@ def current_timer():
         "categories": timer.get("categories", []),
         "is_maintenance": timer.get("is_maintenance", False),
     })
+
+def _build_report():
+    """Recompute streaks/report from raw entries."""
+    from toggl_goals.toggl import Categorizer
+    cat = Categorizer(config)
+    conn = store._conn()
+    rows = conn.execute("SELECT date, description, duration, categories, is_maintenance, is_tax FROM entries ORDER BY date").fetchall()
+    conn.close()
+    entries = []
+    for r in rows:
+        entries.append({
+            "date": r[0],
+            "description": r[1],
+            "duration": r[2],
+            "categories": json.loads(r[3]) if r[3] else [],
+            "is_maintenance": bool(r[4]),
+            "is_tax": bool(r[5]) if r[5] is not None else False,
+        })
+    if not entries:
+        return None
+    dates = sorted(set(e["date"] for e in entries))
+    daily, maintenance, tax = engine.build_daily(entries)
+    full_days = engine.make_day_range(dates[0], dates[-1])
+    streaks = engine.compute_streaks(full_days, daily)
+    report = Report(streaks, daily, maintenance, tax, full_days, config)
+    return report
+
+@app.route("/api/score-history")
+def score_history():
+    report = _build_report()
+    if not report:
+        return jsonify([])
+    days = request.args.get("days", 14, type=int)
+    return jsonify(report.score_history(days))
+
+@app.route("/api/heatmap")
+def heatmap():
+    report = _build_report()
+    if not report:
+        return jsonify({})
+    days = request.args.get("days", 90, type=int)
+    return jsonify(report.heatmap(days))
+
+@app.route("/api/gap-trajectory")
+def gap_trajectory():
+    report = _build_report()
+    if not report:
+        return jsonify({})
+    goal = request.args.get("goal", "research")
+    days = request.args.get("days", 14, type=int)
+    return jsonify(report.gap_trajectory(goal, days))
+
+@app.route("/api/time-allocation")
+def time_allocation():
+    report = _build_report()
+    if not report:
+        return jsonify({})
+    date = request.args.get("date", report.today)
+    return jsonify(report.time_allocation(date))
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

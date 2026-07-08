@@ -1,0 +1,78 @@
+/* ===== Ground Truth Goals — design tokens =====
+   Dark mode = reduced contrast, lighter surfaces (not pure black).
+   8px spacing grid. Concentric border radius. Shadows over borders.
+   From design-lab + make-interfaces-feel-better + impeccable. */
+
+:root {
+  /* surfaces — dark but not crushing */
+  --bg: #0c0d10;
+  --surface-1: #16181d;
+  --surface-2: #1e2128;
+  --surface-3: #272b34;
+
+  /* text — verified contrast >= 4.5:1 */
+  --text: #e8eaf0;
+  --text-dim: #9aa0ad;
+  --text-faint: #6b7280;
+
+  /* semantic */
+  --green: #34d399;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --accent: #60a5fa;
+  --accent-dim: #3b6fb8;
+
+  /* radius — concentric: outer = inner + padding */
+  --r-sm: 6px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-pill: 9999px;
+
+  /* elevation — layered transparent shadows, no borders */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.35);
+  --shadow-3: 0 8px 24px rgba(0,0,0,0.3);
+
+  /* spacing — 8px grid */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { color-scheme: dark; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
+  padding: var(--s-4);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+
+/* numbers never shift layout */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* reduced motion — required by impeccable */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* touch targets >= 44px */
+button, [role="button"] { touch-action: manipulation; min-height: 44px; }
