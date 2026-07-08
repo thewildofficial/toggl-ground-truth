@@ -231,6 +231,78 @@ class Report:
             traj.append({"date": d, "gap_hours": round(gap, 1)})
         return traj
 
+    def score_moving_avg(self, days: int = 14, window: int = 7) -> List[Dict]:
+        """Rolling average of composite scores over `window` days."""
+        history = self.score_history(days)
+        result = []
+        scores = [h["score"] for h in history]
+        for i in range(len(history)):
+            start = max(0, i - window + 1)
+            chunk = scores[start:i + 1]
+            avg = sum(chunk) / len(chunk) if chunk else 0
+            result.append({"date": history[i]["date"], "avg": round(avg, 1)})
+        return result
+
+    def score_slope(self, days: int = 14) -> Dict:
+        """Linear regression slope of composite scores. Returns {slope, intercept, r_squared}."""
+        history = self.score_history(days)
+        n = len(history)
+        if n < 2:
+            return {"slope": 0.0, "intercept": 0.0, "r_squared": 0.0}
+        xs = list(range(n))
+        ys = [h["score"] for h in history]
+        sum_x = sum(xs)
+        sum_y = sum(ys)
+        sum_xy = sum(x * y for x, y in zip(xs, ys))
+        sum_x2 = sum(x * x for x in xs)
+        denom = n * sum_x2 - sum_x * sum_x
+        if denom == 0:
+            return {"slope": 0.0, "intercept": round(sum_y / n, 1), "r_squared": 0.0}
+        slope = (n * sum_xy - sum_x * sum_y) / denom
+        intercept = (sum_y - slope * sum_x) / n
+        # r_squared
+        mean_y = sum_y / n
+        ss_tot = sum((y - mean_y) ** 2 for y in ys)
+        ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+        r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+        return {
+            "slope": round(slope, 2),
+            "intercept": round(intercept, 1),
+            "r_squared": round(r_squared, 3),
+        }
+
+    def score_forecast(self, days: int = 14, forecast_days: int = 7) -> List[Dict]:
+        """Extend the trendline forward by forecast_days days."""
+        history = self.score_history(days)
+        slope_data = self.score_slope(days)
+        slope = slope_data["slope"]
+        intercept = slope_data["intercept"]
+        n = len(history)
+        if n == 0:
+            return []
+        last_date_str = history[-1]["date"]
+        last_date = datetime.strptime(last_date_str, "%Y-%m-%d").date()
+        result = []
+        for f in range(1, forecast_days + 1):
+            x = n - 1 + f  # x continues from last history index
+            projected = slope * x + intercept
+            projected = max(0, min(100, projected))  # clamp 0-100
+            forecast_date = (last_date + timedelta(days=f)).strftime("%Y-%m-%d")
+            result.append({"date": forecast_date, "projected_score": round(projected, 1)})
+        return result
+
+    def goal_daily_minutes(self, days: int = 7) -> Dict:
+        """Per-goal minutes per day for stacked/grouped bar chart."""
+        window = self.full_days[-days:] if days else self.full_days
+        goals = {}
+        for name in self.cfg.goals:
+            minutes = []
+            for d in window:
+                secs = self.daily.get(d, {}).get(name, 0)
+                minutes.append(round(secs / 60, 1))
+            goals[name] = minutes
+        return {"dates": window, "goals": goals}
+
     def time_allocation(self, date: str) -> Dict:
         """Goal vs maintenance vs tax minutes for a day (stacked bar)."""
         goal_mins = sum(self.daily.get(date, {}).values()) / 60

@@ -9,6 +9,8 @@ class DashboardStore {
   scoreHistory = $state([]);
   heatmap = $state(null);
   timeAllocation = $state(null);
+  scoreAnalytics = $state(null);  // NEW: scores, moving_avg, slope, forecast
+  goalDepth = $state(null);        // NEW: per-goal daily minutes
 
   loading = $state(true);
   syncing = $state(false);
@@ -19,13 +21,15 @@ class DashboardStore {
     this.loading = true;
     this.error = null;
     try {
-      const [status, today, gaps, scoreHistory, heatmap, timeAllocation] = await Promise.all([
+      const [status, today, gaps, scoreHistory, heatmap, timeAllocation, scoreAnalytics, goalDepth] = await Promise.all([
         api.status(),
         api.today(),
         api.gaps(),
         api.scoreHistory(14),
         api.heatmap(90),
         api.timeAllocation('today'),
+        api.scoreAnalytics(14),
+        api.goalDepth(7),
       ]);
       this.status = status;
       this.today = today;
@@ -33,6 +37,8 @@ class DashboardStore {
       this.scoreHistory = scoreHistory;
       this.heatmap = heatmap;
       this.timeAllocation = timeAllocation;
+      this.scoreAnalytics = scoreAnalytics;
+      this.goalDepth = goalDepth;
       this.lastSyncAt = new Date();
     } catch (e) {
       this.error = e.message;
@@ -55,7 +61,6 @@ class DashboardStore {
 
   // ---- derived helpers ----
 
-  // composite score for today (last entry in scoreHistory)
   get todayScore() {
     if (!this.scoreHistory.length) return 0;
     return this.scoreHistory[this.scoreHistory.length - 1].score;

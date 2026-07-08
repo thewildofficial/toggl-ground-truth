@@ -5,6 +5,7 @@
   import ScoreDonut from './lib/ScoreDonut.svelte';
   import ScoreTrend from './lib/ScoreTrend.svelte';
   import Heatmap from './lib/Heatmap.svelte';
+  import GoalDepth from './lib/GoalDepth.svelte';
   import TodayTiles from './lib/TodayTiles.svelte';
 
   onMount(() => store.loadAll());
@@ -12,6 +13,10 @@
   let todayGoals = $derived(store.today?.goals ?? []);
   let metCount = $derived(todayGoals.filter(g => g.met).length);
   let todayBreakdown = $derived(store.scoreHistory.length ? store.scoreHistory[store.scoreHistory.length - 1].breakdown : null);
+
+  // analytics derived from store.scoreAnalytics
+  let analytics = $derived(store.scoreAnalytics);
+  let slopeLabel = $derived(analytics?.slope_label ?? '');
 </script>
 
 <header class="top">
@@ -46,6 +51,12 @@
         <span class="hs-num tabular">{store.status?.days_tracked ?? 0}</span>
         <span class="hs-label">days tracked</span>
       </div>
+      {#if slopeLabel}
+        <div class="hero-stat">
+          <span class="hs-num tabular" class:up={analytics?.slope?.slope >= 0} class:down={analytics?.slope?.slope < 0}>{slopeLabel}</span>
+          <span class="hs-label">trend slope</span>
+        </div>
+      {/if}
       <p class="sync-note">
         Last sync {store.status?.last_sync ? new Date(store.status.last_sync).toLocaleString() : 'never'}
       </p>
@@ -57,8 +68,17 @@
     <TodayTiles goals={todayGoals} />
   </Section>
 
-  <Section title="Score Trajectory" subtitle="weighted composite, last 14 days" badge="{store.todayScore}%">
-    <ScoreTrend data={store.scoreHistory} />
+  <Section title="Score Trajectory" subtitle={slopeLabel ? slopeLabel + " — last 14 days" : "weighted composite, last 14 days"} badge={store.todayScore + '%'}>
+    <ScoreTrend
+      data={store.scoreHistory}
+      movingAvg={analytics?.moving_avg}
+      slope={analytics?.slope}
+      forecast={analytics?.forecast}
+    />
+  </Section>
+
+  <Section title="Daily Depth" subtitle="per-goal minutes, last 7 days">
+    {#if store.goalDepth}<GoalDepth data={store.goalDepth} />{/if}
   </Section>
 
   <Section title="Streak Heatmap" subtitle="per-goal completion, last 90 days">
@@ -128,6 +148,8 @@
   .hero-side { display: flex; flex-direction: column; gap: var(--s-3); flex: 1; }
   .hero-stat { display: flex; flex-direction: column; }
   .hs-num { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .hs-num.up { color: var(--green); }
+  .hs-num.down { color: var(--red); }
   .hs-label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .sync-note { font-size: 0.72rem; color: var(--text-faint); margin-top: auto; }
 

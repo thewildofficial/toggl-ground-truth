@@ -270,5 +270,33 @@ def time_allocation():
     date = request.args.get("date", report.today)
     return jsonify(report.time_allocation(date))
 
+@app.route("/api/score-analytics")
+def score_analytics():
+    report = _build_report()
+    if not report:
+        return jsonify({})
+    days = request.args.get("days", 14, type=int)
+    scores = report.score_history(days)
+    moving_avg = report.score_moving_avg(days)
+    slope = report.score_slope(days)
+    forecast = report.score_forecast(days)
+    # Label like "+2.3/day" or "-1.7/day"
+    slope_label = f"+{slope['slope']:.1f}/day" if slope["slope"] >= 0 else f"{slope['slope']:.1f}/day"
+    return jsonify({
+        "scores": scores,
+        "moving_avg": moving_avg,
+        "slope": slope,
+        "forecast": forecast,
+        "slope_label": slope_label,
+    })
+
+@app.route("/api/goal-depth")
+def goal_depth():
+    report = _build_report()
+    if not report:
+        return jsonify({})
+    days = request.args.get("days", 7, type=int)
+    return jsonify(report.goal_daily_minutes(days))
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
