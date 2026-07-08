@@ -14,8 +14,32 @@ from toggl_goals.engine import StreakEngine, Report
 app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
 app.config['BASIC_AUTH_USERNAME'] = os.environ.get('GTG_USER', 'aban')
 app.config['BASIC_AUTH_PASSWORD'] = os.environ.get('GTG_PASS', 'groundtruth')
-app.config['BASIC_AUTH_FORCE'] = True
+# Do NOT force globally — we exempt machine endpoints (extension + polling) below.
+app.config['BASIC_AUTH_FORCE'] = False
 basic_auth = BasicAuth(app)
+
+# Endpoints the browser extension hits from the client side (no basic-auth header).
+# Protected instead by an optional ?token= (GTG_API_TOKEN) or trusted localhost.
+EXTENSION_ENDPOINTS = {"/api/current", "/api/screen-time"}
+
+@app.before_request
+def enforce_auth():
+    # Extension endpoints: allow if token matches or request is from localhost.
+    if request.path in EXTENSION_ENDPOINTS:
+        token = request.args.get("token") or request.headers.get("X-GTG-Token")
+        expected = os.environ.get("GTG_API_TOKEN")
+        if expected and token == expected:
+            return None
+        if request.remote_addr in ("127.0.0.1", "::1"):
+            return None
+        # No valid token and not localhost → require basic auth as fallback.
+        if not basic_auth.authenticate():
+            return basic_auth.challenge()
+        return None
+    # All other routes require basic auth.
+    if not basic_auth.authenticate():
+        return basic_auth.challenge()
+    return None
 
 # Serve the built Svelte dashboard (dashboard-ui/dist) as static assets.
 DIST_DIR = Path(__file__).parent.parent / "dashboard-ui" / "dist"
