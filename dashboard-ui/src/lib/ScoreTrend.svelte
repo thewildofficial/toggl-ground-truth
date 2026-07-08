@@ -249,29 +249,19 @@
 
 <div class="chart-wrap">
   <div class="chart-header">
+    <div class="chart-slope" style:color={slopeColor}>
+      {slopeLabel}
+    </div>
     <button
       class="log-toggle"
       class:active={logScale}
       onclick={() => (logScale = !logScale)}
       aria-pressed={logScale}
-      aria-label="Toggle log scale Y-axis"
+      aria-label="Toggle between linear and logarithmic Y-axis scale"
+      title="Switch to {logScale ? 'linear' : 'log'} scale"
     >
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-        <path
-          d="M4 20V8M4 8h16M8 8v12M12 8v12M16 8v12M20 8v12"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-        />
-      </svg>
-      <span>{logScale ? "Log" : "Linear"}</span>
+      <span>{logScale ? "Linear scale" : "Log scale"}</span>
     </button>
-    {#if slopeData}
-      <span class="r2" title="R² — how well the trendline fits the data">
-        R² {rSquaredPct}%
-      </span>
-    {/if}
   </div>
 
   <div class="chart-scroll">
@@ -426,6 +416,12 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--s-3);
+    margin-bottom: var(--s-2);
+  }
+  .chart-slope {
+    font-size: 0.82rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
   }
   .log-toggle {
     display: inline-flex;
@@ -435,23 +431,18 @@
     color: var(--text-dim);
     border: none;
     border-radius: var(--r-sm);
-    padding: var(--s-1) var(--s-2);
+    padding: var(--s-1) var(--s-3);
     font: inherit;
     font-size: 0.72rem;
     font-weight: 600;
     cursor: pointer;
-    min-height: 44px;
-    transition: background 0.2s cubic-bezier(0.2, 0, 0, 1), color 0.2s cubic-bezier(0.2, 0, 0, 1);
+    min-height: 36px;
+    transition: background 0.2s cubic-bezier(0.2,0,0,1), color 0.2s cubic-bezier(0.2,0,0,1);
   }
   .log-toggle:hover { background: var(--surface-3); }
   .log-toggle.active {
     background: color-mix(in srgb, var(--accent) 20%, var(--surface-2));
     color: var(--accent);
-  }
-  .r2 {
-    font-size: 0.7rem;
-    color: var(--text-faint);
-    font-variant-numeric: tabular-nums;
   }
   .chart-scroll {
     overflow-x: auto;

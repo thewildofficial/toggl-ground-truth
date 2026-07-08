@@ -1,29 +1,30 @@
 <script>
   // Grouped bar chart — per-goal daily minutes over last 7 days.
-  // 6 thin bars per day (one per goal), colored by goal color.
+  // Only renders bars for goals with >0 minutes. Nice Y-axis ticks.
   // Clickable legend to highlight one goal. Hover shows tooltip.
   import { GOAL_COLORS } from "./colors.js";
 
   let { data = { dates: [], goals: {} } } = $props();
 
   let highlightedGoal = $state(null);
-
   let goalNames = $derived(Object.keys(data.goals ?? {}));
   let dates = $derived(data.dates ?? []);
 
   // ---- layout ----
-  const W = 680, H = 200, padL = 36, padR = 16, padT = 20, padB = 28;
+  const H = 200, padL = 36, padR = 16, padT = 16, padB = 28;
+  // W is responsive — computed from container
+  let W = $state(680);
   let innerW = $derived(W - padL - padR);
   let innerH = $derived(H - padT - padB);
 
-  // bar dimensions
-  const BAR_W = 4;
-  const BAR_GAP = 2;
-  const GROUP_GAP = 12;
+  // bar dimensions — wider, fewer crammed
+  const BAR_W = 8;
+  const BAR_GAP = 3;
+  const GROUP_GAP = 16;
   let goalCount = $derived(goalNames.length);
   let groupWidth = $derived(goalCount * BAR_W + (goalCount - 1) * BAR_GAP);
 
-  // compute max minutes for Y scale
+  // nice Y ticks — round to sensible intervals
   let maxMins = $derived.by(() => {
     let max = 0;
     for (const name of goalNames) {
@@ -31,28 +32,22 @@
         if (m > max) max = m;
       }
     }
-    return Math.ceil(max / 10) * 10 || 50;
+    // round up to nearest 30
+    return Math.ceil(max / 30) * 30 || 60;
   });
 
-  // nice Y ticks
   let yTicks = $derived.by(() => {
-    const niceMax = maxMins;
     const ticks = [];
-    const steps = 4;
-    for (let i = 0; i <= steps; i++) {
-      ticks.push(Math.round((niceMax * i) / steps));
-    }
-    return ticks;
+    const step = maxMins / 4;
+    for (let i = 0; i <= 4; i++) ticks.push(Math.round(step * i));
+    return [...new Set(ticks)]; // dedupe if maxMins is small
   });
 
   // bar positions per day
   let dayGroups = $derived.by(() => {
     if (!dates.length) return [];
-    const totalGroupWidth = groupWidth + GROUP_GAP;
-    const totalNeeded = dates.length * totalGroupWidth;
-    // scale to fit innerW
     const availPerDay = innerW / dates.length;
-    const scale = Math.min(1, availPerDay / totalGroupWidth);
+    const scale = Math.min(1, availPerDay / (groupWidth + GROUP_GAP));
     const gw = groupWidth * scale;
     const gGap = GROUP_GAP * scale;
     const bw = BAR_W * scale;
@@ -62,6 +57,8 @@
       const groupX = padL + di * (gw + gGap) + gGap / 2;
       const bars = goalNames.map((name, gi) => {
         const mins = data.goals[name]?.[di] ?? 0;
+        // skip 0-minute bars entirely
+        if (mins <= 0) return null;
         const barH = (mins / maxMins) * innerH;
         return {
           name,
@@ -74,7 +71,7 @@
           highlighted: highlightedGoal === name,
           dimmed: highlightedGoal !== null && highlightedGoal !== name,
         };
-      });
+      }).filter(b => b !== null);
       return { date, groupX, bars, label: date.slice(5) };
     });
   });
@@ -102,9 +99,22 @@
   function toggleGoal(name) {
     highlightedGoal = highlightedGoal === name ? null : name;
   }
+
+  // responsive width
+  let containerEl;
+  $effect(() => {
+    if (!containerEl) return;
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) {
+        W = Math.max(340, e.contentRect.width);
+      }
+    });
+    ro.observe(containerEl);
+    return () => ro.disconnect();
+  });
 </script>
 
-<div class="gd">
+<div class="gd" bind:this={containerEl}>
   <!-- legend (clickable) -->
   <div class="gd-legend">
     {#each goalNames as name}
@@ -130,10 +140,10 @@
       aria-label="Per-goal daily minutes, last 7 days"
     >
       <!-- Y grid lines + labels -->
-      {#each yTicks as t, i}
+      {#each yTicks as t}
         {@const y = padT + innerH - (t / maxMins) * innerH}
         <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="var(--surface-2)" stroke-width="1" />
-        <text x={padL - 8} y={y + 3} text-anchor="end" class="gd-axis" fill="var(--text-faint)">{t}</text>
+        <text x={padL - 6} y={y + 3} text-anchor="end" class="gd-axis" fill="var(--text-faint)">{t}m</text>
       {/each}
 
       <!-- bars + x labels -->
@@ -146,10 +156,10 @@
             x={bar.x}
             y={bar.y}
             width={bar.w}
-            height={Math.max(bar.h, bar.mins > 0 ? 1 : 0)}
-            rx="1"
+            height={bar.h}
+            rx="1.5"
             fill={bar.color}
-            opacity={bar.dimmed ? 0.25 : 1}
+            opacity={bar.dimmed ? 0.2 : 1}
             class:gd-bar-highlighted={bar.highlighted}
             role="img"
             aria-label="{bar.name}: {bar.mins} minutes on {dg.date}"
@@ -173,82 +183,36 @@
 <style>
   .gd { display: flex; flex-direction: column; gap: var(--s-3); }
 
-  .gd-legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--s-1);
-  }
+  .gd-legend { display: flex; flex-wrap: wrap; gap: var(--s-1); }
   .gd-legend-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    background: var(--surface-2);
-    color: var(--text-dim);
-    border: none;
-    border-radius: var(--r-sm);
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface-2); color: var(--text-dim);
+    border: none; border-radius: var(--r-sm);
     padding: var(--s-1) var(--s-2);
-    font: inherit;
-    font-size: 0.72rem;
-    font-weight: 600;
-    cursor: pointer;
-    min-height: 44px;
-    transition: background 0.2s cubic-bezier(0.2, 0, 0, 1), color 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease;
+    font: inherit; font-size: 0.72rem; font-weight: 600;
+    cursor: pointer; min-height: 36px;
+    transition: background 0.2s cubic-bezier(0.2,0,0,1), opacity 0.2s ease;
   }
   .gd-legend-btn:hover { background: var(--surface-3); }
-  .gd-legend-btn.active {
-    background: var(--surface-3);
-    color: var(--text);
-  }
-  .gd-legend-btn.dimmed { opacity: 0.4; }
-  .gd-legend-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
+  .gd-legend-btn.active { background: var(--surface-3); color: var(--text); }
+  .gd-legend-btn.dimmed { opacity: 0.35; }
+  .gd-legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
   .gd-legend-name { text-transform: capitalize; }
 
-  .gd-scroll {
-    overflow-x: auto;
-    scrollbar-width: thin;
-    position: relative;
-  }
-  svg { display: block; min-width: 340px; }
+  .gd-scroll { overflow-x: auto; scrollbar-width: thin; position: relative; }
+  svg { display: block; }
 
-  .gd-axis {
-    font-size: 9px;
-    font-family: var(--font);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .gd-bar-highlighted {
-    filter: drop-shadow(0 0 4px currentColor);
-  }
+  .gd-axis { font-size: 9px; font-family: var(--font); font-variant-numeric: tabular-nums; }
+  .gd-bar-highlighted { filter: drop-shadow(0 0 4px currentColor); }
 
   .gd-tooltip {
-    position: absolute;
-    background: var(--surface-3);
-    border-radius: var(--r-sm);
-    padding: var(--s-1) var(--s-2);
-    box-shadow: var(--shadow-2);
-    z-index: 10;
-    pointer-events: none;
-    white-space: nowrap;
+    position: absolute; background: var(--surface-3);
+    border-radius: var(--r-sm); padding: var(--s-1) var(--s-2);
+    box-shadow: var(--shadow-2); z-index: 10; pointer-events: none; white-space: nowrap;
   }
-  .gd-tooltip-name {
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--text);
-  }
-  .gd-tooltip-val {
-    font-size: 0.65rem;
-    color: var(--text-dim);
-    font-variant-numeric: tabular-nums;
-  }
-
+  .gd-tooltip-name { font-size: 0.68rem; font-weight: 700; color: var(--text); }
+  .gd-tooltip-val { font-size: 0.65rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
   .capitalize { text-transform: capitalize; }
 
-  @media (prefers-reduced-motion: reduce) {
-    .gd-legend-btn { transition: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .gd-legend-btn { transition: none; } }
 </style>

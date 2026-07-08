@@ -13,8 +13,6 @@
   let todayGoals = $derived(store.today?.goals ?? []);
   let metCount = $derived(todayGoals.filter(g => g.met).length);
   let todayBreakdown = $derived(store.scoreHistory.length ? store.scoreHistory[store.scoreHistory.length - 1].breakdown : null);
-
-  // analytics derived from store.scoreAnalytics
   let analytics = $derived(store.scoreAnalytics);
   let slopeLabel = $derived(analytics?.slope_label ?? '');
 </script>
@@ -33,91 +31,101 @@
 </header>
 
 {#if store.error}
-  <p class="err">⚠ {store.error}</p>
+  <p class="err">{store.error}</p>
 {/if}
 
 {#if store.loading}
   <p class="loading">Loading your truth…</p>
 {:else}
-  <!-- COMPACT DEFAULT VIEW: score + today at a glance -->
-  <section class="hero">
+  <!-- HERO: full width on all screens -->
+  <section class="hero desktop-full">
     <ScoreDonut score={store.todayScore} delta={store.scoreDelta} breakdown={todayBreakdown} />
     <div class="hero-side">
-      <div class="hero-stat">
-        <span class="hs-num tabular">{metCount}/{todayGoals.length}</span>
-        <span class="hs-label">goals met today</span>
-      </div>
-      <div class="hero-stat">
-        <span class="hs-num tabular">{store.status?.days_tracked ?? 0}</span>
-        <span class="hs-label">days tracked</span>
-      </div>
-      {#if slopeLabel}
+      <div class="hero-stats-row">
         <div class="hero-stat">
-          <span class="hs-num tabular" class:up={analytics?.slope?.slope >= 0} class:down={analytics?.slope?.slope < 0}>{slopeLabel}</span>
-          <span class="hs-label">trend slope</span>
+          <span class="hs-num tabular">{metCount}/{todayGoals.length}</span>
+          <span class="hs-label">goals today</span>
         </div>
-      {/if}
+        <div class="hero-stat">
+          <span class="hs-num tabular">{store.status?.days_tracked ?? 0}</span>
+          <span class="hs-label">days tracked</span>
+        </div>
+        {#if slopeLabel}
+          <div class="hero-stat">
+            <span class="hs-num tabular" class:up={analytics?.slope?.slope >= 0} class:down={analytics?.slope?.slope < 0}>{slopeLabel}</span>
+            <span class="hs-label">trend</span>
+          </div>
+        {/if}
+      </div>
       <p class="sync-note">
         Last sync {store.status?.last_sync ? new Date(store.status.last_sync).toLocaleString() : 'never'}
       </p>
     </div>
   </section>
 
-  <!-- EXPANDABLE SECTIONS -->
-  <Section title="Today's Scoreboard" subtitle={metCount + " of " + todayGoals.length + " goals met"} badge={store.todayScore} defaultOpen={true}>
-    <TodayTiles goals={todayGoals} />
-  </Section>
+  <!-- DESKTOP GRID: 2-column layout on wide screens, stacked on mobile -->
+  <div class="desktop-grid">
+    <!-- LEFT COLUMN -->
+    <div class="col">
+      <Section title="Today's Scoreboard" subtitle={metCount + " of " + todayGoals.length + " goals met"} badge={store.todayScore} defaultOpen={true}>
+        <TodayTiles goals={todayGoals} />
+      </Section>
 
-  <Section title="Score Trajectory" subtitle={slopeLabel ? slopeLabel + " — last 14 days" : "weighted composite, last 14 days"} badge={store.todayScore + '%'}>
-    <ScoreTrend
-      data={store.scoreHistory}
-      movingAvg={analytics?.moving_avg}
-      slope={analytics?.slope}
-      forecast={analytics?.forecast}
-    />
-  </Section>
+      <Section title="Daily Depth" subtitle="per-goal minutes, last 7 days">
+        {#if store.goalDepth}<GoalDepth data={store.goalDepth} />{/if}
+      </Section>
 
-  <Section title="Daily Depth" subtitle="per-goal minutes, last 7 days">
-    {#if store.goalDepth}<GoalDepth data={store.goalDepth} />{/if}
-  </Section>
-
-  <Section title="Streak Heatmap" subtitle="per-goal completion, last 90 days">
-    {#if store.heatmap}<Heatmap heatmap={store.heatmap} />{/if}
-  </Section>
-
-  <Section title="Reality Check" subtitle="where stated ≠ ground truth">
-    {#if store.gaps}
-      {@const m = store.gaps._maintenance}
-      {@const t = store.gaps._tax}
-      <div class="truths">
-        {#if m && m.daily_avg_mins > 120}
-          <p class="truth warn">🔥 Maintenance burn {m.daily_avg_mins}m/day ({m.weekly_hours}h/wk) — crowding out ideal work.</p>
+      <Section title="Reality Check" subtitle="where stated ≠ ground truth">
+        {#if store.gaps}
+          {@const m = store.gaps._maintenance}
+          {@const t = store.gaps._tax}
+          <div class="truths">
+            {#if m && m.daily_avg_mins > 120}
+              <p class="truth warn">Maintenance burn {m.daily_avg_mins}m/day ({m.weekly_hours}h/wk) — crowding out ideal work.</p>
+            {/if}
+            {#if store.gaps.research && store.gaps.research.avg_mins < store.gaps.research.target * 0.5}
+              {@const short = ((store.gaps.research.target - store.gaps.research.avg_mins) * 7 / 60).toFixed(1)}
+              <p class="truth bad">Research {short}h/wk short of target. Stated priority ≠ logged time.</p>
+            {/if}
+            {#if t && t.daily_avg_mins > 60}
+              <p class="truth warn">Tax {t.daily_avg_mins}m/day = {Math.round(t.daily_avg_mins/30)}x 30m blocks leaked.</p>
+            {/if}
+            {#if (!m || m.daily_avg_mins <= 120) && (!store.gaps.research || store.gaps.research.avg_mins >= store.gaps.research.target * 0.5) && (!t || t.daily_avg_mins <= 60)}
+              <p class="truth good">No gaps flagged. You are who you say you are.</p>
+            {/if}
+          </div>
         {/if}
-        {#if store.gaps.research && store.gaps.research.avg_mins < store.gaps.research.target * 0.5}
-          {@const short = ((store.gaps.research.target - store.gaps.research.avg_mins) * 7 / 60).toFixed(1)}
-          <p class="truth bad">🥀 Research {short}h/wk short of target. Stated priority ≠ logged time.</p>
-        {/if}
-        {#if t && t.daily_avg_mins > 60}
-          <p class="truth warn">💸 Tax {t.daily_avg_mins}m/day. = {Math.round(t.daily_avg_mins/30)}x 30m blocks leaked.</p>
-        {/if}
-        {#if (!m || m.daily_avg_mins <= 120) && (!store.gaps.research || store.gaps.research.avg_mins >= store.gaps.research.target * 0.5) && (!t || t.daily_avg_mins <= 60)}
-          <p class="truth good">✅ No gaps flagged. You are who you say you are.</p>
-        {/if}
-      </div>
-    {/if}
-  </Section>
+      </Section>
+    </div>
 
-  <Section title="Productivity Tax" subtitle="time not matching any goal">
-    {#if store.gaps?._tax}
-      {@const tax = store.gaps._tax}
-      <div class="tax-grid">
-        <div class="tax-cell"><span class="tc-num tabular">{store.today?.tax_mins ?? 0}m</span><span class="tc-label">today</span></div>
-        <div class="tax-cell"><span class="tc-num tabular">{tax.daily_avg_mins}m</span><span class="tc-label">7d avg</span></div>
-        <div class="tax-cell"><span class="tc-num tabular">{tax.weekly_hours}h</span><span class="tc-label">weekly</span></div>
-      </div>
-      <p class="tax-note">Tax = tracked time with no goal/maintenance match. The leak you're not looking at.</p>
-    {/if}
-  </Section>
+    <!-- RIGHT COLUMN -->
+    <div class="col">
+      <Section title="Score Trajectory" subtitle={slopeLabel ? slopeLabel + " — last 14 days" : "weighted composite, last 14 days"} badge={store.todayScore + '%'}>
+        <ScoreTrend
+          data={store.scoreHistory}
+          movingAvg={analytics?.moving_avg}
+          slope={analytics?.slope}
+          forecast={analytics?.forecast}
+        />
+      </Section>
+
+      <Section title="Streak Heatmap" subtitle="per-goal completion, last 90 days">
+        {#if store.heatmap}<Heatmap heatmap={store.heatmap} />{/if}
+      </Section>
+
+      <Section title="Productivity Tax" subtitle="time not matching any goal">
+        {#if store.gaps?._tax}
+          {@const tax = store.gaps._tax}
+          <div class="tax-grid">
+            <div class="tax-cell"><span class="tc-num tabular">{store.today?.tax_mins ?? 0}m</span><span class="tc-label">today</span></div>
+            <div class="tax-cell"><span class="tc-num tabular">{tax.daily_avg_mins}m</span><span class="tc-label">7d avg</span></div>
+            <div class="tax-cell"><span class="tc-num tabular">{tax.weekly_hours}h</span><span class="tc-label">weekly</span></div>
+          </div>
+          <p class="tax-note">Tax = tracked time with no goal/maintenance match. The leak you're not looking at.</p>
+        {/if}
+      </Section>
+    </div>
+  </div>
 {/if}
 
 <style>
@@ -146,12 +154,15 @@
     box-shadow: var(--shadow-1);
   }
   .hero-side { display: flex; flex-direction: column; gap: var(--s-3); flex: 1; }
+  .hero-stats-row { display: flex; gap: var(--s-5); flex-wrap: wrap; }
   .hero-stat { display: flex; flex-direction: column; }
-  .hs-num { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+  .hs-num { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
   .hs-num.up { color: var(--green); }
   .hs-num.down { color: var(--red); }
-  .hs-label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+  .hs-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .sync-note { font-size: 0.72rem; color: var(--text-faint); margin-top: auto; }
+
+  .col { display: flex; flex-direction: column; gap: 0; }
 
   .truths { display: flex; flex-direction: column; gap: var(--s-2); }
   .truth { font-size: 0.88rem; padding: var(--s-3); border-radius: var(--r-md); }
@@ -165,9 +176,10 @@
   .tc-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
   .tax-note { font-size: 0.78rem; color: var(--text-dim); }
 
-  @media (max-width: 480px) {
+  @media (max-width: 899px) {
     .hero { flex-direction: column; align-items: stretch; text-align: center; }
     .hero-side { align-items: center; }
+    .hero-stats-row { justify-content: center; }
     .sync-note { margin-top: var(--s-2); }
   }
 </style>
